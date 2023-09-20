@@ -22,6 +22,7 @@ mpeg1.c, mpeg1.h - Public Domain
 Dominic Szablewski (https://phoboslab.org) - Great decoding engine.
 Ian Robinson & BB Hood - They provided advice and ideas.
 
+with permission https://dcemulation.org/phpBB/viewtopic.php?p=1060259#p1060259
 
 Single-file MIT licensed library for C/C++
 
