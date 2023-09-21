@@ -25,7 +25,7 @@ Ian Robinson & BB Hood - They provided advice and ideas.
 with permission https://dcemulation.org/phpBB/viewtopic.php?p=1060259#p1060259
 
 I have added this here to get your started with encoding for a cdr
-ffmpeg -i input.mp4 -vf "scale=320:240" -b:v 800k -ac 1 -ar 44100 -b:a 80k -f mpeg output.mpeg
+```ffmpeg -i input.mp4 -vf "scale=320:240" -b:v 800k -ac 1 -ar 44100 -b:a 80k -f mpeg output.mpeg```
 
 Single-file MIT licensed library for C/C++
 
