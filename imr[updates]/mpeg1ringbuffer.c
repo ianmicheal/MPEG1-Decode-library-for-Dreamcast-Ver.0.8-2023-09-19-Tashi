@@ -51,7 +51,9 @@ plm_frame_t *dequeueFrame() {
     }
     return frame;
 }
-
+#define UV_EPSILON 0.100f
+#define screenWidth 640
+#define screenHeight 480
 void display_draw(void)
 {
     pvr_poly_cxt_t cxt;
@@ -73,32 +75,33 @@ void display_draw(void)
     vert.x = 1;
     vert.y = 1;
     vert.z = 1;
-    vert.u = 0.0f;
-    vert.v = 0.0f;
+    vert.u = UV_EPSILON;
+    vert.v = UV_EPSILON;
     pvr_prim(&vert, sizeof(vert));
 
-    vert.x = 640;
+    vert.x = screenWidth;
     vert.y = 1;
     vert.z = 1;
-    vert.u = u;
-    vert.v = 0.0;
+    vert.u = u - UV_EPSILON;
+    vert.v = UV_EPSILON;
     pvr_prim(&vert, sizeof(vert));
 
     vert.x = 1;
-    vert.y = 480;
+    vert.y = screenHeight;
     vert.z = 1;
-    vert.u = 0.0f;
-    vert.v = v;
+    vert.u = UV_EPSILON;
+    vert.v = v - UV_EPSILON;
     pvr_prim(&vert, sizeof(vert));
 
-    vert.x = 640;
-    vert.y = 480;
+    vert.x = screenWidth;
+    vert.y = screenHeight;
     vert.z = 1;
-    vert.u = u;
-    vert.v = v;
+    vert.u = u - UV_EPSILON;
+    vert.v = v - UV_EPSILON;
     vert.flags = PVR_CMD_VERTEX_EOL;
     pvr_prim(&vert, sizeof(vert));
 }
+
 
 void app_on_video(plm_t *mpeg, plm_frame_t *frame, void *user)
 {
@@ -247,10 +250,15 @@ int Mpeg1Play(const char *filename, unsigned int buttons)
         /* Check cancel buttons. */
         if (buttons)
         {
-            MAPLE_FOREACH_BEGIN(MAPLE_FUNC_CONTROLLER, cont_state_t, st)
-            if ((st->buttons & buttons) == buttons)
-                cancel = 1;
-            MAPLE_FOREACH_END()
+    /* Check cancel buttons. */
+   MAPLE_FOREACH_BEGIN(MAPLE_FUNC_CONTROLLER, cont_state_t, st)
+   if (buttons && ((st->buttons & buttons) == buttons))
+   cancel = 1; /* Push cancel buttons */
+   if (st->buttons == 0x60e)
+   cancel = 2; /* ABXY + START (Software reset) */
+   MAPLE_FOREACH_END()
+
+
         }
 
         /* Decode */
@@ -287,7 +295,5 @@ int Mpeg1Play(const char *filename, unsigned int buttons)
     plm_destroy(plm);
     pvr_mem_free(texture);
     snd_stream_destroy(snd_hnd);
-
-    return 0;
+    return cancel;
 }
-
