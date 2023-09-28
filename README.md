@@ -25,7 +25,11 @@ Ian Robinson & BB Hood - They provided advice and ideas.
 with permission https://dcemulation.org/phpBB/viewtopic.php?p=1060259#p1060259
 
 I have added this here to get your started with encoding for a cdr
-```ffmpeg -i input.mp4 -vf "scale=320:240" -b:v 800k -ac 1 -ar 44100 -b:a 80k -f mpeg output.mpeg```
+```ffmpeg -i input.mp4 -vf "scale=320:240" -b:v 742k -minrate 742k -maxrate 742k -bufsize 742k -ac 1 -ar 32000 -c:a mp2 -b:a 64k -f mpeg output.mpg```
+Profiling 
+![output](https://github.com/ianmicheal/MPEG1-Decode-library-for-Dreamcast-Ver.0.8-2023-09-19-Tashi/assets/59771322/59842ba9-31fa-469e-827a-bfd3880d8450)
+
+
 
 Single-file MIT licensed library for C/C++
 
