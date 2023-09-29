@@ -793,7 +793,7 @@ static inline __attribute__((always_inline)) float pl_fipr(float x1, float x2, f
   register float __y4 __asm__("fr11") = ty4;
 
   // take care of all the floats in one fell swoop
-  asm volatile ("fipr FV4, FV8\n"
+  __asm__ __volatile__ ("fipr FV4, FV8\n"
   : "+f" (__y4) // output (gets written to FR11)
   : "f" (__x1), "f" (__x2), "f" (__x3), "f" (__x4), "f" (__y1), "f" (__y2), "f" (__y3) // inputs
   : // clobbers
@@ -2950,7 +2950,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 		int scan_half = scan >> 1;
 		int i;
 
-		asm("pref @%0" : : "r"(s));
+		__asm__("pref @%0" : : "r"(s));
 
 		for (i = (self->mb_row + 1); i; i--)
 		{
@@ -2960,7 +2960,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 			{
 				int y;
 
-				asm("pref @%0" : : "r"(s + 16));
+				__asm__("pref @%0" : : "r"(s + 16));
 
 				for (y = 0; y < 8; y++)
 				{
@@ -2977,7 +2977,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 				d_cr -= scan_half * 8 - 2;
 				s += 16;
 
-				asm("pref @%0" : : "r"(s + 16));
+				__asm__("pref @%0" : : "r"(s + 16));
 
 				for (y = 0; y < 8; y++)
 				{
@@ -2991,7 +2991,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 	
 				s += 16;
 
-				asm("pref @%0" : : "r"(s + 16));
+				__asm__("pref @%0" : : "r"(s + 16));
 
 				for (y = 0; y < 8; y++)
 				{
@@ -3006,7 +3006,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 				d_y -= scan * 16 - 4;
 				s += 16;
 
-				asm("pref @%0" : : "r"(s + 16));
+				__asm__("pref @%0" : : "r"(s + 16));
 			}
 			
 			d_cb += scan_half * 7;
@@ -3221,8 +3221,8 @@ void plm_video_predict_macroblock(plm_video_t *self) {
 		fw_h <<= 1;
 		fw_v <<= 1;
 	}
-	fw_h += (self->mb_col << 5);
-	fw_v += (self->mb_row << 5);
+	fw_h += fw_h < 0 ? ((self->mb_col - self->mb_width) << 5) : (self->mb_col << 5);
+	fw_v += fw_v < 0 ? ((self->mb_row - self->mb_height) << 5) : (self->mb_row << 5);
 
 	if (self->picture_type == PLM_VIDEO_PICTURE_TYPE_B) {
 		int bw_h = self->motion_backward.h;
@@ -3232,8 +3232,8 @@ void plm_video_predict_macroblock(plm_video_t *self) {
 			bw_h <<= 1;
 			bw_v <<= 1;
 		}
-		bw_h += (self->mb_col << 5);
-		bw_v += (self->mb_row << 5);
+		bw_h += bw_h < 0 ? ((self->mb_col - self->mb_width) << 5) : (self->mb_col << 5);
+		bw_v += bw_v < 0 ? ((self->mb_row - self->mb_height) << 5) : (self->mb_row << 5);
 
 		if (self->motion_forward.is_set) {
 			plm_video_copy_macroblock(d, &self->frame_forward, fw_h, fw_v);
@@ -3254,14 +3254,17 @@ void plm_video_copy_macroblock(
 	uint32_t *dest, plm_frame_t *reference, int motion_h, int motion_v
 ) {
 	int dw = reference->width;
+	int dh = reference->height;
+	int hp = motion_h < 0 ? (dw + (motion_h >> 1)) : (motion_h >> 1);
+	int vp = motion_v < 0 ? (dh + (motion_v >> 1)) : (motion_v >> 1);
 	int odd_h = (motion_h & 1) == 1;
 	int odd_v = (motion_v & 1) == 1;
 	uint8_t *src = reference->y.data;
-	unsigned int si = (motion_v >> 1) * dw + (motion_h >> 1);
+	unsigned int si = vp * dw + hp;
 
 	/* Y block */
 	dest += 32;
-	asm("pref @%0" : : "r"(dest));
+	__asm__("pref @%0" : : "r"(dest));
 	
 	if (odd_h && odd_v)
 	{
@@ -3273,8 +3276,8 @@ void plm_video_copy_macroblock(
 		{
 			for (int j = 8; j; j--)
 			{
-				asm("pref @%0" : : "r"(s1 + scan));
-				asm("pref @%0" : : "r"(s2 + scan));
+				__asm__("pref @%0" : : "r"(s1 + scan));
+				__asm__("pref @%0" : : "r"(s2 + scan));
 				d[0] = (s1[0] + s1[1] + s2[0] + s2[1] + 2) >> 2;
 				d[1] = (s1[1] + s1[2] + s2[1] + s2[2] + 2) >> 2;
 				d[2] = (s1[2] + s1[3] + s2[2] + s2[3] + 2) >> 2;
@@ -3298,18 +3301,18 @@ void plm_video_copy_macroblock(
 			d += 64;
 		}
 	}
-	else if (odd_h || odd_v)
+	else if (odd_v)
 	{
 		uint8_t *d = (uint8_t *)dest;
 		uint8_t *s1 = (uint8_t *)(src + si);
-		uint8_t *s2 = (uint8_t *)(odd_h ? (src + si + 1) : (src + si + dw));
+		uint8_t *s2 = (uint8_t *)(src + si + dw);
 		int scan = dw;
 		for (int i = 2; i; i--)
 		{
 			for (int j = 8; j; j--)
 			{
-				asm("pref @%0" : : "r"(s1 + scan));
-				asm("pref @%0" : : "r"(s2 + scan));
+				__asm__("pref @%0" : : "r"(s1 + scan));
+				__asm__("pref @%0" : : "r"(s2 + scan));
 				d[0] = (s1[0] + s2[0] + 1) >> 1;
 				d[1] = (s1[1] + s2[1] + 1) >> 1;
 				d[2] = (s1[2] + s2[2] + 1) >> 1;
@@ -3333,9 +3336,41 @@ void plm_video_copy_macroblock(
 			d += 64;
 		}
 	}
+	else if (odd_h)
+	{
+		uint8_t *d = (uint8_t *)dest;
+		uint8_t *s = (uint8_t *)(src + si);
+		int scan = dw;
+		for (int i = 2; i; i--)
+		{
+			for (int j = 8; j; j--)
+			{
+				__asm__("pref @%0" : : "r"(s + scan));
+				d[0] = (s[0] + s[1] + 1) >> 1;
+				d[1] = (s[1] + s[2] + 1) >> 1;
+				d[2] = (s[2] + s[3] + 1) >> 1;
+				d[3] = (s[3] + s[4] + 1) >> 1;
+				d[4] = (s[4] + s[5] + 1) >> 1;
+				d[5] = (s[5] + s[6] + 1) >> 1;
+				d[6] = (s[6] + s[7] + 1) >> 1;
+				d[7] = (s[7] + s[8] + 1) >> 1;
+				d[64] = (s[8] + s[9] + 1) >> 1;
+				d[65] = (s[9] + s[10] + 1) >> 1;
+				d[66] = (s[10] + s[11] + 1) >> 1;
+				d[67] = (s[11] + s[12] + 1) >> 1;
+				d[68] = (s[12] + s[13] + 1) >> 1;
+				d[69] = (s[13] + s[14] + 1) >> 1;
+				d[70] = (s[14] + s[15] + 1) >> 1;
+				d[71] = (s[15] + s[16] + 1) >> 1;
+				d += 8;
+				s += scan;
+			}
+			d += 64;
+		}
+	}
 	else
 	{
-		if (motion_h & 2)
+		if (hp & 1)
 		{
 			uint8_t *d = (uint8_t *)dest;
 			uint8_t *s = (uint8_t *)(src + si);
@@ -3344,7 +3379,7 @@ void plm_video_copy_macroblock(
 			{
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d[2] = s[2];
@@ -3367,7 +3402,7 @@ void plm_video_copy_macroblock(
 				d += 64;
 			}
 		}
-		else if (motion_h & 4)
+		else if (hp & 2)
 		{
 			uint16_t *d = (uint16_t *)dest;
 			uint16_t *s = (uint16_t *)(src + si);
@@ -3376,7 +3411,7 @@ void plm_video_copy_macroblock(
 			{
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d[2] = s[2];
@@ -3400,7 +3435,7 @@ void plm_video_copy_macroblock(
 			{
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d[16] = s[2];
@@ -3415,14 +3450,17 @@ void plm_video_copy_macroblock(
 
 	/* Cb, Cr blocks */
 	dest -= 32;
-	asm("pref @%0" : : "r"(dest));
+	__asm__("pref @%0" : : "r"(dest));
 	src = reference->cb.data;
 	dw >>= 1;
+	dh >>= 1;
 	motion_h /= 2;
 	motion_v /= 2;
+	hp = motion_h < 0 ? (dw + (motion_h >> 1)) : (motion_h >> 1);
+	vp = motion_v < 0 ? (dh + (motion_v >> 1)) : (motion_v >> 1);
 	odd_h = (motion_h & 1) == 1;
 	odd_v = (motion_v & 1) == 1;
-	si = (motion_v >> 1) * dw + (motion_h >> 1);
+	si = vp * dw + hp;
 
 	for (int i = 2; i; i--)
 	{
@@ -3434,8 +3472,8 @@ void plm_video_copy_macroblock(
 			int scan = dw;
 			for (int j = 8; j; j--)
 			{
-				asm("pref @%0" : : "r"(s1 + scan));
-				asm("pref @%0" : : "r"(s2 + scan));
+				__asm__("pref @%0" : : "r"(s1 + scan));
+				__asm__("pref @%0" : : "r"(s2 + scan));
 				d[0] = (s1[0] + s1[1] + s2[0] + s2[1] + 2) >> 2;
 				d[1] = (s1[1] + s1[2] + s2[1] + s2[2] + 2) >> 2;
 				d[2] = (s1[2] + s1[3] + s2[2] + s2[3] + 2) >> 2;
@@ -3449,16 +3487,16 @@ void plm_video_copy_macroblock(
 				s2 += scan;
 			}
 		}
-		else if (odd_h || odd_v)
+		else if (odd_v)
 		{
 			uint8_t *d = (uint8_t *)dest;
 			uint8_t *s1 = (uint8_t *)(src + si);
-			uint8_t *s2 = (uint8_t *)(odd_h ? (src + si + 1) : (src + si + dw));
+			uint8_t *s2 = (uint8_t *)(src + si + dw);
 			int scan = dw;
 			for (int j = 8; j; j--)
 			{
-				asm("pref @%0" : : "r"(s1 + scan));
-				asm("pref @%0" : : "r"(s2 + scan));
+				__asm__("pref @%0" : : "r"(s1 + scan));
+				__asm__("pref @%0" : : "r"(s2 + scan));
 				d[0] = (s1[0] + s2[0] + 1) >> 1;
 				d[1] = (s1[1] + s2[1] + 1) >> 1;
 				d[2] = (s1[2] + s2[2] + 1) >> 1;
@@ -3472,16 +3510,36 @@ void plm_video_copy_macroblock(
 				s2 += scan;
 			}
 		}
+		else if (odd_h)
+		{
+			uint8_t *d = (uint8_t *)dest;
+			uint8_t *s = (uint8_t *)(src + si);
+			int scan = dw;
+			for (int j = 8; j; j--)
+			{
+				__asm__("pref @%0" : : "r"(s + scan));
+				d[0] = (s[0] + s[1] + 1) >> 1;
+				d[1] = (s[1] + s[2] + 1) >> 1;
+				d[2] = (s[2] + s[3] + 1) >> 1;
+				d[3] = (s[3] + s[4] + 1) >> 1;
+				d[4] = (s[4] + s[5] + 1) >> 1;
+				d[5] = (s[5] + s[6] + 1) >> 1;
+				d[6] = (s[6] + s[7] + 1) >> 1;
+				d[7] = (s[7] + s[8] + 1) >> 1;
+				d += 8;
+				s += scan;
+			}
+		}
 		else
 		{
-			if (motion_h & 2)
+			if (hp & 1)
 			{
 				uint8_t *d = (uint8_t *)dest;
 				uint8_t *s = (uint8_t *)(src + si);
 				int scan = dw;
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d[2] = s[2];
@@ -3494,14 +3552,14 @@ void plm_video_copy_macroblock(
 					s += scan;
 				}
 			}
-			else if (motion_h & 4)
+			else if (hp & 2)
 			{
 				uint16_t *d = (uint16_t *)dest;
 				uint16_t *s = (uint16_t *)(src + si);
 				int scan = dw >> 1;
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d[2] = s[2];
@@ -3517,7 +3575,7 @@ void plm_video_copy_macroblock(
 				int scan = dw >> 2;
 				for (int j = 8; j; j--)
 				{
-					asm("pref @%0" : : "r"(s + scan));
+					__asm__("pref @%0" : : "r"(s + scan));
 					d[0] = s[0];
 					d[1] = s[1];
 					d += 2;
@@ -3526,7 +3584,7 @@ void plm_video_copy_macroblock(
 			}
 		}
 		dest += 16;
-		asm("pref @%0" : : "r"(dest));
+		__asm__("pref @%0" : : "r"(dest));
 		src = reference->cr.data;
 	}
 }
@@ -3665,7 +3723,7 @@ void plm_video_decode_block(plm_video_t *self, int block) {
 	}
 
 	int *s = self->block_data;
-	asm("pref @%0" : : "r"(s));
+	__asm__("pref @%0" : : "r"(s));
 
 	if (self->macroblock_intra) {
 		// Overwrite (no prediction)
@@ -4422,18 +4480,18 @@ void plm_audio_decode_frame(plm_audio_t *self) {
 				int d_index = (512 - (self->v_pos >> 1)) >> 5;
 				int v_index = (self->v_pos % 128) >> 1;
 				float *d = &self->D[d_index];
-				float *v0 = &self->V[v_index];
-				float *v1 = &self->V[96 - v_index];
+				float *v1 = &self->V[v_index];
+				float *v2 = &self->V[96 - v_index];
 				for (int i = 32; i; --i)
 				{
 					float u;
-					u = pl_fipr(d[0], d[1], d[2], d[3], v0[0], v1[0], v0[128], v1[128]);
-					u += pl_fipr(d[4], d[5], d[6], d[7], v0[256], v1[256], v0[384], v1[384]);
-					u += pl_fipr(d[8], d[9], d[10], d[11], v0[512], v1[512], v0[640], v1[640]);
-					u += pl_fipr(d[12], d[13], d[14], d[15], v0[768], v1[768], v0[896], v1[896]);
+					u = pl_fipr(d[0], d[1], d[2], d[3], v1[0], v2[0], v1[128], v2[128]);
+					u += pl_fipr(d[4], d[5], d[6], d[7], v1[256], v2[256], v1[384], v2[384]);
+					u += pl_fipr(d[8], d[9], d[10], d[11], v1[512], v2[512], v1[640], v2[640]);
+					u += pl_fipr(d[12], d[13], d[14], d[15], v1[768], v2[768], v1[896], v2[896]);
 					d += 32;
-					v0++;
 					v1++;
+					v2++;
 					*out++ = (short)((int)u >> 16);
 				} // !! Monoral only !!
 
