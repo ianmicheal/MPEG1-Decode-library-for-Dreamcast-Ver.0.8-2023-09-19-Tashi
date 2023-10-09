@@ -802,6 +802,60 @@ static inline __attribute__((always_inline)) float pl_fipr(float x1, float x2, f
   return __y4;
 }
 
+// Default (8-bit, 1 byte at a time) DH`moop
+void * memmove_co (void *dest, const void *src, size_t len)
+{
+  if(!len)
+  {
+    return dest;
+  }
+
+  const uint8_t *s = (uint8_t *)src;
+  uint8_t *d = (uint8_t *)dest;
+
+  if (s > d)
+  {
+    uint32_t diff = (uint32_t)d - (uint32_t)(s + 1); // extra offset because input gets incremented before output is calculated
+    // This will underflow and be like adding a negative offset
+
+    // Can use 'd' as a scratch reg now
+    __asm__ __volatile__ (
+      "clrs\n" // Align for parallelism (CO) - SH4a use "stc SR, Rn" instead with a dummy Rn
+    ".align 2\n"
+    "0:\n\t"
+      "dt %[size]\n\t" // (--len) ? 0 -> T : 1 -> T (EX 1)
+      "mov.b @%[in]+, %[scratch]\n\t" // scratch = *(s++) (LS 1/2)
+      "bf.s 0b\n\t" // while(s != nexts) aka while(!T) (BR 1/2)
+      " mov.b %[scratch], @(%[offset], %[in])\n" // *(datatype_of_s*) ((char*)s + diff) = scratch, where src + diff = dest (LS)
+      : [in] "+&r" ((uint32_t)s), [scratch] "=&r" ((uint32_t)d), [size] "+&r" (len) // outputs
+      : [offset] "z" (diff) // inputs
+      : "t", "memory" // clobbers
+    );
+  }
+  else // s < d
+  {
+    uint8_t *nextd = d + len;
+
+    uint32_t diff = (uint32_t)s - (uint32_t)(d + 1); // extra offset because input calculation occurs before output is decremented
+    // This will underflow and be like adding a negative offset
+
+    // Can use 's' as a scratch reg now
+    __asm__ __volatile__ (
+      "clrs\n" // Align for parallelism (CO) - SH4a use "stc SR, Rn" instead with a dummy Rn
+    ".align 2\n"
+    "0:\n\t"
+      "dt %[size]\n\t" // (--len) ? 0 -> T : 1 -> T (EX 1)
+      "mov.b @(%[offset], %[out_end]), %[scratch]\n\t" // scratch = *(--nexts) where --nexts is nextd + underflow result (LS 2)
+      "bf.s 0b\n\t" // while(nextd != d) aka while(!T) (BR 1/2)
+      " mov.b %[scratch], @-%[out_end]\n" // *(--nextd) = scratch (LS 1/1)
+      : [out_end] "+&r" ((uint32_t)nextd), [scratch] "=&r" ((uint32_t)s), [size] "+&r" (len) // outputs
+      : [offset] "z" (diff) // inputs
+      : "t", "memory" // clobbers
+    );
+  }
+
+  return dest;
+}
 
 #ifndef TRUE
 #define TRUE 1
@@ -1319,6 +1373,29 @@ int plm_seek(plm_t *self, double time, int seek_exact) {
 }
 
 
+void *memsetsh4(void *dest, const uint8_t val, size_t len) {
+    uint8_t *ptr, *sq;
+    uint32_t nb;
+
+    ptr = (uint8_t *)dest;
+
+    ptr = (uint8_t *)(((uint32_t)ptr + 31) & ~(31)); /* Align dest to 32 bytes */
+
+    /* Fill in store queue */
+    sq = (uint8_t *)0xE0000000;
+    for (nb = 64; nb > 0; nb--) *sq++ = val;
+
+    /* Set dest image to store queue */
+    ptr = (uint8_t *)((((uint32_t)ptr) & 0x03FFFFFF) | 0xE0000000);
+
+    while (len >= 32) {
+        __builtin_prefetch(ptr);
+        len -= 32;
+        ptr += 32;
+    }
+
+    return dest;
+}
 
 // -----------------------------------------------------------------------------
 // plm_buffer implementation
@@ -1397,7 +1474,7 @@ plm_buffer_t *plm_buffer_create_with_file(unsigned int fh, int close_when_done) 
 
 plm_buffer_t *plm_buffer_create_with_memory(uint8_t *bytes, size_t length, int free_when_done) {
 	plm_buffer_t *self = (plm_buffer_t *)PLM_MALLOC(sizeof(plm_buffer_t));
-	memset(self, 0, sizeof(plm_buffer_t));
+	memsetsh4(self, 0, sizeof(plm_buffer_t));
 	self->capacity = length;
 	self->length = length;
 	self->total_size = length;
@@ -1527,7 +1604,7 @@ void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 		self->length = 0;
 	}
 	else if (byte_pos > 0) {
-		memmove(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
+		memmove_co(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
 		self->bit_index -= byte_pos << 3;
 		self->length -= byte_pos;
 	}
@@ -3157,7 +3234,7 @@ void plm_video_decode_macroblock(plm_video_t *self) {
 	int cbp = ((self->macroblock_type & 0x02) != 0)
 		? plm_buffer_read_vlc(self->buffer, PLM_VIDEO_CODE_BLOCK_PATTERN)
 		: (self->macroblock_intra ? 0x3f : 0);
-
+     
 	for (int block = 0, mask = 0x20; block < 6; block++) {
 		if ((cbp & mask) != 0) {
 			plm_video_decode_block(self, block);
@@ -3797,72 +3874,88 @@ void plm_video_decode_block(plm_video_t *self, int block) {
 		}
 	}
 }
-
+// Ian micheal unrolled 2x
 void plm_video_idct(int *block) {
-	int
-		b1, b3, b4, b6, b7, tmp1, tmp2, m0,
-		x0, x1, x2, x3, x4, y3, y4, y5, y6, y7;
+    int x0, x1, x2, x3, x4, y3, y4, y5, y6, y7;
+    int b1, b3, b4, b6, b7, tmp1, tmp2, m0;
+    int i;
 
-	// Transform columns
-	for (int i = 0; i < 8; ++i) {
-		b1 = block[4 * 8 + i];
-		b3 = block[2 * 8 + i] + block[6 * 8 + i];
-		b4 = block[5 * 8 + i] - block[3 * 8 + i];
-		tmp1 = block[1 * 8 + i] + block[7 * 8 + i];
-		tmp2 = block[3 * 8 + i] + block[5 * 8 + i];
-		b6 = block[1 * 8 + i] - block[7 * 8 + i];
-		b7 = tmp1 + tmp2;
-		m0 = block[0 * 8 + i];
-		x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7;
-		x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8);
-		x1 = m0 - b1;
-		x2 = (((block[2 * 8 + i] - block[6 * 8 + i]) * 362 + 128) >> 8) - b3;
-		x3 = m0 + b1;
-		y3 = x1 + x2;
-		y4 = x3 + b3;
-		y5 = x1 - x2;
-		y6 = x3 - b3;
-		y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8);
-		block[0 * 8 + i] = b7 + y4;
-		block[1 * 8 + i] = x4 + y3;
-		block[2 * 8 + i] = y5 - x0;
-		block[3 * 8 + i] = y6 - y7;
-		block[4 * 8 + i] = y6 + y7;
-		block[5 * 8 + i] = x0 + y5;
-		block[6 * 8 + i] = y3 - x4;
-		block[7 * 8 + i] = y4 - b7;
-	}
+    // Unrolled loop for columns
+    for (i = 0; i < 8; ++i) {
+        int *p = block + i;
 
-	// Transform rows
-	for (int i = 0; i < 64; i += 8) {
-		b1 = block[4 + i];
-		b3 = block[2 + i] + block[6 + i];
-		b4 = block[5 + i] - block[3 + i];
-		tmp1 = block[1 + i] + block[7 + i];
-		tmp2 = block[3 + i] + block[5 + i];
-		b6 = block[1 + i] - block[7 + i];
-		b7 = tmp1 + tmp2;
-		m0 = block[0 + i];
-		x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7;
-		x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8);
-		x1 = m0 - b1;
-		x2 = (((block[2 + i] - block[6 + i]) * 362 + 128) >> 8) - b3;
-		x3 = m0 + b1;
-		y3 = x1 + x2;
-		y4 = x3 + b3;
-		y5 = x1 - x2;
-		y6 = x3 - b3;
-		y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8);
-		block[0 + i] = (b7 + y4 + 128) >> 8;
-		block[1 + i] = (x4 + y3 + 128) >> 8;
-		block[2 + i] = (y5 - x0 + 128) >> 8;
-		block[3 + i] = (y6 - y7 + 128) >> 8;
-		block[4 + i] = (y6 + y7 + 128) >> 8;
-		block[5 + i] = (x0 + y5 + 128) >> 8;
-		block[6 + i] = (y3 - x4 + 128) >> 8;
-		block[7 + i] = (y4 - b7 + 128) >> 8;
-	}
+        x0 = p[4 * 8];
+        x1 = p[2 * 8] + p[6 * 8];
+        x2 = p[5 * 8] - p[3 * 8];
+        tmp1 = p[1 * 8] + p[7 * 8];
+        tmp2 = p[3 * 8] + p[5 * 8];
+        b6 = p[1 * 8] - p[7 * 8];
+        b7 = tmp1 + tmp2;
+        m0 = p[0 * 8];
+        b4 = block[5 * 8 + i] - block[3 * 8 + i];
+        b1 = block[4 * 8 + i];
+        b3 = block[2 * 8 + i] + block[6 * 8 + i];
+
+        x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7;
+        x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8);
+        x1 = m0 - b1;
+        x2 = (((p[2 * 8] - p[6 * 8]) * 362 + 128) >> 8) - b3;
+        x3 = m0 + b1;
+        y3 = x1 + x2;
+        y4 = x3 + b3;
+        y5 = x1 - x2;
+        y6 = x3 - b3;
+        y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8);
+
+        p[0 * 8] = b7 + y4;
+        p[1 * 8] = x4 + y3;
+        p[2 * 8] = y5 - x0;
+        p[3 * 8] = y6 - y7;
+        p[4 * 8] = y6 + y7;
+        p[5 * 8] = x0 + y5;
+        p[6 * 8] = y3 - x4;
+        p[7 * 8] = y4 - b7;
+    }
+
+    // Unrolled loop for rows
+    for (i = 0; i < 64; i += 8) {
+        int *p = block + i;
+
+        x0 = p[4];
+        x1 = p[2] + p[6];
+        x2 = p[5] - p[3];
+        tmp1 = p[1] + p[7];
+        tmp2 = p[3] + p[5];
+        b6 = p[1] - p[7];
+        b7 = tmp1 + tmp2;
+        m0 = p[0];
+        b4 = block[5 + i] - block[3 + i];
+        b1 = block[4 + i];
+        b3 = block[2 + i] + block[6 + i];
+
+        x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7;
+        x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8);
+        x1 = m0 - b1;
+        x2 = (((p[2] - p[6]) * 362 + 128) >> 8) - b3;
+        x3 = m0 + b1;
+        y3 = x1 + x2;
+        y4 = x3 + b3;
+        y5 = x1 - x2;
+        y6 = x3 - b3;
+        y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8);
+
+        p[0] = (b7 + y4 + 128) >> 8;
+        p[1] = (x4 + y3 + 128) >> 8;
+        p[2] = (y5 - x0 + 128) >> 8;
+        p[3] = (y6 - y7 + 128) >> 8;
+        p[4] = (y6 + y7 + 128) >> 8;
+        p[5] = (x0 + y5 + 128) >> 8;
+        p[6] = (y3 - x4 + 128) >> 8;
+        p[7] = (y4 - b7 + 128) >> 8;
+    }
 }
+
+
 
 
 // YCbCr conversion following the BT.601 standard:

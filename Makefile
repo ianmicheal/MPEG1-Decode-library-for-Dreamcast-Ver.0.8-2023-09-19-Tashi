@@ -1,8 +1,11 @@
 all: rm-elf example.elf
 
+
+
+KOS_CFLAGS+= -g -std=c99  -mpretend-cmove  -fno-delayed-branch -fno-optimize-sibling-calls -funroll-all-loops  -fexpensive-optimizations -fomit-frame-pointer -fstrict-aliasing -ffast-math
 include $(KOS_BASE)/Makefile.rules
 
-OBJS = example.o mpeg1.o
+OBJS =  example.o mpeg1.o profiler.o
 
 KOS_LOCAL_CFLAGS = -I$(KOS_BASE)/addons/zlib
 	
