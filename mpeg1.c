@@ -490,11 +490,7 @@ MAPLE_FOREACH_END()
     printf("snd_stream_destroy\n");
     pvr_shutdown(); // Clean up PVR resources
     vid_shutdown(); // This function reinitializes the video system to what dcload and friends expect it to be
-      // Run the main application here
-            void* subelf;
-            int length;
-            length = fs_load("/cd/plugins/dis.pl", &subelf);
-            arch_exec_at(subelf, length, 0x8C010000);
+
     printf("arch_exit\n");
     return cancel;
 }
