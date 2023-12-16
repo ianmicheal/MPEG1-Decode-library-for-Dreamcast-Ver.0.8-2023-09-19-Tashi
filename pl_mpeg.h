@@ -3874,6 +3874,7 @@ void plm_video_decode_block(plm_video_t *self, int block) {
 		}
 	}
 }
+
 // Ian micheal unrolled 2x
 void plm_video_idct(int *block) {
     int x0, x1, x2, x3, x4, y3, y4, y5, y6, y7;

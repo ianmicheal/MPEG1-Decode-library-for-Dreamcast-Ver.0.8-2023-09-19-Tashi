@@ -1,36 +1,25 @@
-all: rm-elf example.elf
 
+TARGET = mpeg.elf
+OBJS =  example.o mpeg.o romdisk.o
+KOS_ROMDISK_DIR = romdisk
 
+all: rm-elf $(TARGET)
 
-KOS_CFLAGS+= -g -std=c99  -mpretend-cmove  -fno-delayed-branch -fno-optimize-sibling-calls -funroll-all-loops  -fexpensive-optimizations -fomit-frame-pointer -fstrict-aliasing -ffast-math
 include $(KOS_BASE)/Makefile.rules
 
-OBJS =  example.o mpeg1.o profiler.o
-
-KOS_LOCAL_CFLAGS = -I$(KOS_BASE)/addons/zlib
-	
-clean:
-	-rm -f example.elf $(OBJS)
-	-rm -f romdisk_boot.*
-
-dist:
+clean: rm-elf
 	-rm -f $(OBJS)
-	-rm -f romdisk_boot.*
-	$(KOS_STRIP) example.elf
-	
+
 rm-elf:
-	-rm -f example.elf
-	-rm -f romdisk_boot.*
+	-rm -f $(TARGET)
 
-example.elf: $(OBJS) romdisk_boot.o 
-	$(KOS_CC) $(KOS_CFLAGS) $(KOS_LDFLAGS) -o $@ $(KOS_START) $^ -lz -lm $(KOS_LIBS)
+$(TARGET): $(OBJS)
+	kos-cc -o $(TARGET) $(OBJS)
 
-romdisk_boot.img:
-	$(KOS_GENROMFS) -f $@ -d romdisk_boot -v
+run: $(TARGET)
+	$(KOS_LOADER) $(TARGET)
 
-romdisk_boot.o: romdisk_boot.img
-	$(KOS_BASE)/utils/bin2o/bin2o $< romdisk_boot $@
-
-run: example.elf
-	$(KOS_LOADER) $<
+dist: $(TARGET)
+	-rm -f $(OBJS)
+	$(KOS_STRIP) $(TARGET)
 
