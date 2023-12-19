@@ -25,7 +25,7 @@ static int snd_mod_size = 0;
 
 #define SOUND_BUFFER (16 * 1024)
 //65536
-__attribute__((aligned(32))) uint32_t snd_buf[SOUND_BUFFER];
+uint32_t *snd_buf;
 
 static void *sound_callback(snd_stream_hnd_t hnd, int size, int *size_out) {
     plm_samples_t *sample;
@@ -164,6 +164,11 @@ int mpeg_play(const char *filename, uint32_t buttons) {
     plm = plm_create_with_filename(filename);
     if(!plm)
         return -1;
+
+    snd_buf = memalign(32, SOUND_BUFFER);
+    if(snd_buf) {
+        printf("Shit happens\n");
+    }
     
     width = plm_get_width(plm);
     height = plm_get_height(plm);
@@ -216,6 +221,7 @@ int mpeg_play(const char *filename, uint32_t buttons) {
         pvr_scene_finish();
     }
 
+    free(snd_buf);
     plm_destroy(plm);
     pvr_mem_free(texture);
     snd_stream_destroy(snd_hnd);
