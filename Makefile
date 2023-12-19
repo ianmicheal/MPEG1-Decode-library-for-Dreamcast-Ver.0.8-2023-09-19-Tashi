@@ -2,6 +2,8 @@
 TARGET = mpeg.elf
 OBJS =  example.o mpeg.o romdisk.o
 KOS_ROMDISK_DIR = romdisk
+KOS_CFLAGS += -g
+
 
 all: rm-elf $(TARGET)
 

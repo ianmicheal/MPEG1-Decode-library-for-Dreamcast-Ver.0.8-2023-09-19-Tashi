@@ -3,11 +3,23 @@
 
 #include <inttypes.h>
 
-#include <sys/cdefs.h>
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-int mpeg_play(const char *filename, uint32_t buttons);
+#include <stdio.h>
 
-__END_DECLS
+typedef struct mpeg_player_t mpeg_player_t;
+
+mpeg_player_t *mpeg_player_create(const char *filename);
+mpeg_player_t *mpeg_player_create_memory(unsigned char *memory, const size_t length);
+
+void mpeg_player_destroy(mpeg_player_t *player);
+
+int mpeg_play(mpeg_player_t *player, uint32_t buttons);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
