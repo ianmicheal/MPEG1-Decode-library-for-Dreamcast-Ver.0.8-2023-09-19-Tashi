@@ -182,9 +182,7 @@ int mpeg_play(const char *filename, uint32_t buttons) {
     audio_time = 0.0f;
     snd_hnd = snd_stream_alloc(sound_callback, 0x10000);
     snd_stream_volume(snd_hnd, 0xff);
-    snd_stream_queue_enable(snd_hnd);
     snd_stream_start(snd_hnd, samplerate, 0);
-    snd_stream_queue_go(snd_hnd);
     audio_interval = audio_time;
 
     while(!cancel) {
