@@ -19,53 +19,71 @@ snd_stream_hnd_t snd_hnd;
 __attribute__((aligned(32))) unsigned int snd_buf[0x10000 / 4];
 static int snd_mod_start = 0;
 static int snd_mod_size = 0;
-
+//IAN MICHEAL 7/6/2024 updated to use much faster Direct render state 
 void display_draw(void)
 {
     pvr_poly_cxt_t cxt;
     pvr_poly_hdr_t hdr;
-    pvr_vertex_t vert;
+    pvr_vertex_t *vert;
+    pvr_dr_state_t dr_state;
     float u = (float)width / (float)MPEG1_TEXTURE_WIDTH;
     float v = (float)height / (float)MPEG1_TEXTURE_HEIGHT;
 
     pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_YUV422 | PVR_TXRFMT_NONTWIDDLED, MPEG1_TEXTURE_WIDTH, MPEG1_TEXTURE_HEIGHT, texture, PVR_FILTER_BILINEAR);
     pvr_poly_compile(&hdr, &cxt);
-
     // hdr.mode3 |= 0x02000000; /* stride */
+    
     pvr_prim(&hdr, sizeof(hdr));
+    
+    pvr_dr_init(dr_state);
 
-    vert.argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
-    vert.oargb = 0;
-    vert.flags = PVR_CMD_VERTEX;
+    // Vertex 1
+    vert = pvr_dr_target(dr_state);
+    vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
+    vert->oargb = 0;
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = 1;
+    vert->y = 1;
+    vert->z = 1;
+    vert->u = 0.0f;
+    vert->v = 0.0f;
+    pvr_dr_commit(vert);
 
-    vert.x = 1;
-    vert.y = 1;
-    vert.z = 1;
-    vert.u = 0.0f;
-    vert.v = 0.0f;
-    pvr_prim(&vert, sizeof(vert));
+    // Vertex 2
+    vert = pvr_dr_target(dr_state);
+    vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
+    vert->oargb = 0;
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = 640;
+    vert->y = 1;
+    vert->z = 1;
+    vert->u = u;
+    vert->v = 0.0f;
+    pvr_dr_commit(vert);
 
-    vert.x = 640;
-    vert.y = 1;
-    vert.z = 1;
-    vert.u = u;
-    vert.v = 0.0;
-    pvr_prim(&vert, sizeof(vert));
+    // Vertex 3
+    vert = pvr_dr_target(dr_state);
+    vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
+    vert->oargb = 0;
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = 1;
+    vert->y = 480;
+    vert->z = 1;
+    vert->u = 0.0f;
+    vert->v = v;
+    pvr_dr_commit(vert);
 
-    vert.x = 1;
-    vert.y = 480;
-    vert.z = 1;
-    vert.u = 0.0f;
-    vert.v = v;
-    pvr_prim(&vert, sizeof(vert));
-
-    vert.x = 640;
-    vert.y = 480;
-    vert.z = 1;
-    vert.u = u;
-    vert.v = v;
-    vert.flags = PVR_CMD_VERTEX_EOL;
-    pvr_prim(&vert, sizeof(vert));
+    // Vertex 4
+    vert = pvr_dr_target(dr_state);
+    vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
+    vert->oargb = 0;
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->x = 640;
+    vert->y = 480;
+    vert->z = 1;
+    vert->u = u;
+    vert->v = v;
+    pvr_dr_commit(vert);
 }
 
 void app_on_video(plm_t *mpeg, plm_frame_t *frame, void *user)
