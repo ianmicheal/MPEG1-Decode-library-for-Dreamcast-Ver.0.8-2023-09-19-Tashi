@@ -2,8 +2,8 @@
 
 MPEG1 Decode library for Dreamcast Ver.0.8
 	2023/09/19 Tashi
-
-
+#### UPDATES ####
+Direct render update 7/6/2024 Ian micheal
 #### FEATURES ####
 You can play MPEG1 videos with audio.
 Audio is monaural only. For stereo, only the left channel will be played.
