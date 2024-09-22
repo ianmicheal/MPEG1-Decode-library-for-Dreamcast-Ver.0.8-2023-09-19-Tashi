@@ -1,1 +1,43 @@
 
+Core Components:
+
+Uses PL_MPEG library for MPEG decoding
+KallistiOS (KOS) for Dreamcast development
+PowerVR (PVR) for rendering
+
+
+Key Features:
+
+2MB streaming buffer for smooth playback
+YUV422 texture format for video rendering
+Audio streaming support
+FPS counting and display
+Buffer management with refill tracking
+
+
+Main Functions:
+a. initialize_stream_buffer(): Sets up the 2MB buffer for streaming
+b. cleanup_stream_buffer(): Frees allocated buffer memory
+c. display_draw(): Renders the video frame using PVR
+d. app_on_video(): Processes each video frame
+e. sound_callback(): Handles audio streaming
+f. Mpeg1Play(): Main playback function
+Key Optimizations:
+
+Direct rendering for improved performance
+Minimum buffer fill level before playback starts
+Optimized buffer refill process
+YUV data verification for debugging
+
+Debug Information:
+
+FPS counter
+Buffer refill count
+Remaining buffer size
+YUV data averages (commented out)
+
+
+Latest Code Changes:
+
+Updated DEBUG_PRINT macro for correct file and line number formatting
+Modified format specifiers in Mpeg1Play for uint32_t variables
