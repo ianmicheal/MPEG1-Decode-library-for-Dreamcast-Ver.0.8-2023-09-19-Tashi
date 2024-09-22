@@ -36,8 +36,10 @@ Buffer refill count
 Remaining buffer size
 YUV data averages (commented out)
 
-
-Latest Code Changes:
-
-Updated DEBUG_PRINT macro for correct file and line number formatting
+Implmented DEBUG_PRINT macro for correct file and line number formatting
 Modified format specifiers in Mpeg1Play for uint32_t variables
+
+
+DMA version is full speed all the time on DC emulators and hardware but there is glitch on hardware 
+
+
