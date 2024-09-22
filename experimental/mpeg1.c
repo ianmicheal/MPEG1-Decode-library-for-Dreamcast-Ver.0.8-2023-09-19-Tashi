@@ -7,7 +7,7 @@
  * Dreamcast Port:Twada SH4 Optimizing and sound [making it use-able at all]
  * Further optimizing functions for Dreamcast
  * SH4 inline assembly by Ian Michael
- *
+ * Buffer and debug funtions and direct rendering by Ian micheal
  * LICENSE: The MIT License (MIT)
  * ------------------------------
  * Copyright (c) 2019 Dominic Szablewski
