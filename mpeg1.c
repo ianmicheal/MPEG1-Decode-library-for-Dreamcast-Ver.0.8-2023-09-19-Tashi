@@ -1,15 +1,55 @@
+/*
+ * PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer
+ * -------------------------------------------------------------
+ *
+ * Original Author: Dominic Szablewski - https://phoboslab.org
+ * Dreamcast Port: Ian Michael (2023/2024)
+ * Dreamcast Port:Twada SH4 Optimizing and sound [making it use-able at all]
+ * Further optimizing functions for Dreamcast
+ * SH4 inline assembly by Ian Michael
+ *
+ * LICENSE: The MIT License (MIT)
+ * ------------------------------
+ * Copyright (c) 2019 Dominic Szablewski
+ * Copyright (c) 2024 Ian Michael
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
+
+
 #include <kos.h>
+#include <dc/pvr.h>
+#include <dc/sound/stream.h>
+#include <arch/cache.h>
+#include <math.h>
 #define PL_MPEG_IMPLEMENTATION
 #include "pl_mpeg.h"
 #include "mpeg1.h"
+
 
 static plm_t *plm;
 
 /* textures */
 static pvr_ptr_t texture;
 static int width, height;
-// Output texture width and height initial values
-// You can choose from 32, 64, 128, 256, 512, 1024
 #define MPEG1_TEXTURE_WIDTH 512
 #define MPEG1_TEXTURE_HEIGHT 256
 
@@ -19,25 +59,24 @@ snd_stream_hnd_t snd_hnd;
 __attribute__((aligned(32))) unsigned int snd_buf[0x10000 / 4];
 static int snd_mod_start = 0;
 static int snd_mod_size = 0;
-//IAN MICHEAL 7/6/2024 updated to use much faster Direct render state 
+
 void display_draw(void)
 {
     pvr_poly_cxt_t cxt;
-    pvr_poly_hdr_t hdr;
+    pvr_poly_hdr_t *hdr;
     pvr_vertex_t *vert;
     pvr_dr_state_t dr_state;
     float u = (float)width / (float)MPEG1_TEXTURE_WIDTH;
     float v = (float)height / (float)MPEG1_TEXTURE_HEIGHT;
 
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_YUV422 | PVR_TXRFMT_NONTWIDDLED, MPEG1_TEXTURE_WIDTH, MPEG1_TEXTURE_HEIGHT, texture, PVR_FILTER_BILINEAR);
-    pvr_poly_compile(&hdr, &cxt);
-    // hdr.mode3 |= 0x02000000; /* stride */
+    pvr_dr_init(&dr_state);
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_YUV422 | PVR_TXRFMT_NONTWIDDLED, 
+                     MPEG1_TEXTURE_WIDTH, MPEG1_TEXTURE_HEIGHT, texture, PVR_FILTER_BILINEAR);
     
-    pvr_prim(&hdr, sizeof(hdr));
-    
-    pvr_dr_init(dr_state);
+    hdr = (pvr_poly_hdr_t *)pvr_dr_target(dr_state);
+    pvr_poly_compile(hdr, &cxt);
+    pvr_dr_commit(hdr);
 
-    // Vertex 1
     vert = pvr_dr_target(dr_state);
     vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
     vert->oargb = 0;
@@ -49,7 +88,6 @@ void display_draw(void)
     vert->v = 0.0f;
     pvr_dr_commit(vert);
 
-    // Vertex 2
     vert = pvr_dr_target(dr_state);
     vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
     vert->oargb = 0;
@@ -61,7 +99,6 @@ void display_draw(void)
     vert->v = 0.0f;
     pvr_dr_commit(vert);
 
-    // Vertex 3
     vert = pvr_dr_target(dr_state);
     vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
     vert->oargb = 0;
@@ -73,7 +110,6 @@ void display_draw(void)
     vert->v = v;
     pvr_dr_commit(vert);
 
-    // Vertex 4
     vert = pvr_dr_target(dr_state);
     vert->argb = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
     vert->oargb = 0;
@@ -84,6 +120,7 @@ void display_draw(void)
     vert->u = u;
     vert->v = v;
     pvr_dr_commit(vert);
+    pvr_dr_finish();
 }
 
 void app_on_video(plm_t *mpeg, plm_frame_t *frame, void *user)
@@ -128,16 +165,16 @@ void app_on_video(plm_t *mpeg, plm_frame_t *frame, void *user)
             /* Send dummy mb */
             for (i = 0; i < 32 - w; i++)
             {
-                sq_set((void *)0x10800000, 0, 384);
+                 sq_set((void *)0x10800000, 0, 384);
             }
         }
     }
     for (i = 0; i < 16 - h; i++)
     {
         if (!stride)
-            sq_set((void *)0x10800000, 0, 384 * 32);
+             sq_set((void *)0x10800000, 0, 384 * 32);
         else
-            sq_set((void *)0x10800000, 0, 384 * w);
+             sq_set((void *)0x10800000, 0, 384 * w);
     }
 }
 
@@ -191,8 +228,8 @@ int Mpeg1Play(const char *filename, unsigned int buttons)
     PVR_SET(PVR_YUV_ADDR, (((unsigned int)texture) & 0xffffff));
     // Divide texture width and texture height by 16 and subtract 1.
     // The actual values to set are 1, 3, 7, 15, 31, 63.
-    PVR_SET(PVR_YUV_CFG_1, (((MPEG1_TEXTURE_HEIGHT / 16) - 1) << 8) | ((MPEG1_TEXTURE_WIDTH / 16) - 1));
-    PVR_GET(PVR_YUV_CFG_1);
+    PVR_SET(PVR_YUV_CFG, (((MPEG1_TEXTURE_HEIGHT / 16) - 1) << 8) | ((MPEG1_TEXTURE_WIDTH / 16) - 1));
+    PVR_GET(PVR_YUV_CFG);
 
     /* First frame */
     plm_frame_t *frame = plm_decode_video(plm);
@@ -250,3 +287,4 @@ int Mpeg1Play(const char *filename, unsigned int buttons)
 
     return cancel;
 }
+
