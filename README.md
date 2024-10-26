@@ -3,6 +3,7 @@
 MPEG1 Decode library for Dreamcast Ver.0.8
 	2023/09/19 Tashi
 #### UPDATES ####
+Update to new kos 2.1.0 10/25/2024
 Direct render update 7/6/2024 Ian micheal for old kos2.0 the pvr api has changed
 #### FEATURES ####
 You can play MPEG1 videos with audio.
